@@ -1,0 +1,243 @@
+;Alunos: Alaf e Marcos
+;Disciplina: Sistemas Digitais
+;QUESTÃO 02, Segunda Prova Parcial - 2019/2
+
+; Dataram address alias
+constant x, 07  
+constant xx, 08  
+
+constant x_bcd0, 13
+constant x_bcd1, 14
+constant x_bin,  15
+     
+constant xx_bcd0, 10
+constant xx_bcd1, 11
+constant xx_bcd2, 12
+
+; Register alias
+namereg s0, data  ;reg for temporary data
+namereg s1, i     ;general-purpose loop index
+namereg s7, addr  ;reg for temporary mem & i/o port addr
+namereg s8, sw_in     
+namereg s9, bcd0
+namereg sa, bcd1
+namereg sb, bcd2
+namereg sc, counter
+
+;input port alias
+constant sw_port, 05 	   ;4-bit switches ;input port
+constant rd_flag_port, 10  ;2 flags (xxxxxxsc) input (btn0 e btn1)
+
+;output port alias
+constant x_bcd0_port,  00    ;bcd0-x
+constant x_bcd1_port,  40    ;bcd1-x
+constant xx_bcd0_port, 80    ;bcd0-xx
+constant xx_bcd1_port, c0    ;bcd1-xx
+constant xx_bcd2_port, 20    ;bcd2-xx
+
+
+; ---------------Main program-------------------
+   call clr_data_mem
+void_loop:
+   call proc_btn           ;check & process buttons
+   call read_switch
+   call square
+   call bin2bcd
+   call output
+   jump void_loop
+;-----------------------------------------------
+
+clr_data_mem:
+   load i, 40              
+   load data, 00
+ clr_mem_loop:
+   store data, (i)
+   sub i, 01               ;dec loop index
+   jump nz, clr_mem_loop   ;repeat until i=0
+ ;  load switch_a_bin, 00 ;descobrir o motivo
+   return
+;-----------------------------------------------
+read_switch:
+   input sw_in, sw_port     ;read switch input
+   compare sw_in,01
+   jump c, clr_data_mem
+   compare sw_in,02
+   jump c, exit
+   
+   load data, sw_in
+   and data, 0F  ;00001111 it's 4 clear upper nibble
+   store data, x        ;store x to data ram
+exit: return
+;-----------------------------------------------
+square:
+   fetch s3, x          ;load x
+   fetch s4, x          ;load x
+   call mult_soft           ;calculate x*x
+   store s6, xx         ;store lower byte of x*x
+   return
+;-----------------------------------------------  
+mult_soft:
+   load s5, 00              ;clear s5
+   load i, 08               ;initialize loop index
+  mult_loop:
+   sr0  s4                  ;shift lsb to carry
+   jump nc, shift_prod      ;lsb is 0
+   add s5, s3               ;lsb is 1
+  shift_prod:
+   sra s5                   ;shift upper byte right,
+                            ;carry to MSB, LSB to carry
+   sra s6                   ;shift lower byte right,
+                            ;lsb of s5 to MSB of s6
+   sub i, 01                ;dec loop index
+   jump nz, mult_loop       ;repeat until i=0
+   return
+;-----------------------------------------------
+proc_btn:
+   input s3, rd_flag_port  ;get flag
+   ;check and process c button
+   test s3, 01             ;check c button flag
+   jump z, chk_btns        ;flag not set
+   call clr_data_mem       ;flag set, clear
+   jump proc_btn_done
+ chk_btns:
+   ;check and process s button
+   test s3, 02             ;check s button flag
+   jump z, proc_btn_done   ;flag not set
+   input data, sw_port     ;get switch
+   load addr, x_bin        ;get addr of a
+   store data, (addr)      ;write data to ram
+ proc_btn_done:
+   return
+;-----------------------------------------------
+output:
+   fetch data, x_bcd0
+   output data,x_bcd0_port
+   fetch data, x_bcd1
+   output data,x_bcd1_port
+   fetch data, xx_bcd0
+   output data,xx_bcd0_port
+   fetch data, xx_bcd1
+   output data,xx_bcd1_port
+   fetch data, xx_bcd2
+   output data,xx_bcd2_port   
+   return
+;-----------------------------------------------
+bin2bcd:
+	;First: convert x
+	fetch data,		 x
+	compare data,0A
+	jump c,outBCDx
+	load bcd0, 		00
+	load bcd1, 		00
+	load counter, 	00
+
+
+  ret_itx:
+	load bcd1, bcd0		
+	and bcd1,F0
+	and bcd0,0F
+
+  ;Compare BCD1 (parte baixa) with 5 and, if smaller, do not add 03 to BCD0	
+  L0x:
+	compare bcd0,05
+	jump c,L1x
+	add bcd0,03 
+	
+  ;Compare BCD1 (pt low) with 5 and, if smaller, add 3 on BCD1 (pt low)
+  L1x:
+	compare bcd1,05
+	jump c,L2x
+	add bcd0,03
+
+  ;do the shift and check end, if true, throw the values ​​in the output variables
+  L2x:
+	sl0 data ;mov the first msb bit from data(xx)
+	sla bcd0 ;the first lsb (into bcd0) is the old first msb from data
+	add counter, 01
+	compare counter,04 ;it's 03 bcz for 04 the bcd was finished
+	jump c, ret_itx
+	load bcd1,bcd0
+	and bcd0, 0F
+	and bcd1, F0
+	;take 4 bits lsb
+	sr0 bcd1
+	sr0 bcd1
+	sr0 bcd1
+	sr0 bcd1
+	store bcd0, x_bcd0
+	store bcd1, x_bcd1
+	
+outBCDx:
+	store data,x_bcd0
+	
+	
+;------------------------------------------------------------------------------------
+
+	;Second: convert xx
+	fetch data,	x	
+	compare data,04
+	jump c,outBCDxx
+	fetch data, xx
+	load bcd0, 		00
+	load bcd1, 		00
+	load bcd2, 		00
+	load counter, 	00 
+	jump ret_itxx
+
+  ret_itxx:
+	load bcd1,bcd0		
+	load sf,bcd0
+	and sf,F0
+	and bcd2,0F
+	and bcd1,F0
+
+;Compare BCD2 (parte baixa) with 5 and, if smaller, do not add 03 to BCD0	
+  L0xx:
+	compare sf,05
+	jump c,L1xx
+	add bcd0,03
+
+;Compare BCD2 (high end) with 5 and, if smaller, does not add 3 to bcd0 (high end)
+  L1xx:
+	compare bcd1,50
+	jump c,L2xx
+	add bcd0,30 
+	
+;Compare BCD1 (pt low) with 5 and, if smaller, add 3 on BCD1 (pt low)
+  L2xx:
+	compare bcd2,05
+	jump c,L3xx
+	add bcd2,03
+
+;do the shift and check end, if true, throw the values ​​in the output variables
+  L3xx:
+	sl0 data ;mov the first msb bit from data(xx)
+	sla bcd0 ;the first lsb (into bcd0) is the old first msb from data
+	sla bcd2
+	add counter, 01
+	compare counter,08;if 09 the bcd was finished
+	jump c, ret_itxx
+	load bcd1,bcd0
+	and bcd0,0F
+	store bcd0, xx_bcd0
+	and bcd1,F0
+	;take 4 bits lsb
+	sr0 bcd1
+	sr0 bcd1
+	sr0 bcd1
+	sr0 bcd1
+	add bcd0,05
+ 	sr0 bcd0
+	add bcd0,01
+	add bcd1,01
+	store bcd1, xx_bcd1
+	and bcd2,0F
+	store bcd2, xx_bcd2
+	
+	return
+outBCDxx:
+	fetch data, xx
+	store data,xx_bcd0
+	return
+	
+
